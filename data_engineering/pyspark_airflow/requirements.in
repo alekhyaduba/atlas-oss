@@ -1,0 +1,21 @@
+# ── Core ─────────────────────────────────────────────────────
+apache-airflow==2.8.1
+pyspark==3.5.1
+pandas==2.1.4
+pyarrow==14.0.2          # Parquet read/write
+
+# ── Computer Vision ───────────────────────────────────────────
+opencv-python-headless==4.9.0.80
+Pillow==10.2.0
+
+# ── ML / Inference ────────────────────────────────────────────
+torch==2.2.0
+torchvision==0.17.0
+transformers==4.38.2
+accelerate==0.27.2        # mixed-precision / device placement
+
+# ── Config ────────────────────────────────────────────────────
+PyYAML==6.0.1
+
+# ── Utilities ─────────────────────────────────────────────────
+tqdm==4.66.2

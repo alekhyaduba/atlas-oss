@@ -1,0 +1,150 @@
+# ============================================================
+# IMAGE PIPELINE RUN CONFIG
+# Controls model selection, preprocessing, tagging, and DVC
+# ============================================================
+
+pipeline:
+  name: "image_caption_tag_pipeline"
+  version: "1.0.0"
+  environment: "development"          # development | staging | production
+  log_level: "INFO"                   # DEBUG | INFO | WARNING | ERROR
+
+# ── Runtime Model Selection ─────────────────────────────────
+model:
+  # Caption model backend: "blip" | "blip2" | "git" | "mock" (for testing)
+  captioning_backend: "blip"
+
+  blip:
+    model_name: "Salesforce/blip-image-captioning-base"
+    device: "cpu"                     # cpu | cuda | mps
+    max_new_tokens: 50
+    batch_size: 4
+
+  blip2:
+    model_name: "Salesforce/blip2-opt-2.7b"
+    device: "cuda"
+    max_new_tokens: 100
+    batch_size: 2
+
+  git:
+    model_name: "microsoft/git-base-coco"
+    device: "cpu"
+    max_new_tokens: 50
+    batch_size: 4
+
+  mock:
+    # Returns deterministic captions for unit testing / CI
+    enabled: true
+
+  # Tagging model (zero-shot classification via CLIP)
+  tagging_backend: "clip"             # clip | mock
+
+  clip:
+    model_name: "openai/clip-vit-base-patch32"
+    device: "cpu"
+    top_k_tags: 5
+    confidence_threshold: 0.15
+    candidate_labels:
+      - "outdoor scene"
+      - "indoor scene"
+      - "portrait"
+      - "landscape"
+      - "urban"
+      - "nature"
+      - "animals"
+      - "food"
+      - "technology"
+      - "architecture"
+      - "abstract"
+      - "night scene"
+      - "black and white"
+      - "close-up"
+      - "aerial view"
+
+# ── Image Preprocessing ──────────────────────────────────────
+preprocessing:
+  target_size: [512, 512]             # [width, height] — null to skip resize
+  normalize: true
+  normalize_mean: [0.485, 0.456, 0.406]
+  normalize_std:  [0.229, 0.224, 0.225]
+
+  opencv:
+    denoise: true
+    denoise_h: 10                     # luminance filter strength
+    sharpen: true
+    sharpen_kernel_size: 3
+    auto_contrast: true               # CLAHE equalization
+    clahe_clip_limit: 2.0
+    clahe_tile_grid: [8, 8]
+    convert_colorspace: "RGB"         # BGR | RGB | GRAY
+
+  output_format: "JPEG"              # JPEG | PNG | WEBP
+  output_quality: 90                 # JPEG quality (1–100)
+
+# ── Spark / PySpark Settings ─────────────────────────────────
+spark:
+  app_name: "ImageCaptionPipeline"
+  master: "local[*]"                  # local[*] | spark://host:7077
+  executor_memory: "2g"
+  driver_memory: "2g"
+  executor_cores: 2
+  num_partitions: 8
+  log_level: "WARN"
+  extra_configs:
+    "spark.sql.shuffle.partitions": "8"
+    "spark.serializer": "org.apache.spark.serializer.KryoSerializer"
+
+# ── Data Version Control (DVC-style metadata) ────────────────
+dvc:
+  enabled: true
+  storage_backend: "local"           # local | s3 | gcs | azure
+  local_store: "/opt/airflow/dvc_store"
+
+  s3:
+    bucket: "my-pipeline-dvc"
+    prefix: "image_pipeline"
+    region: "us-east-1"
+    # Credentials via env: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
+  metadata_fields:
+    - "image_id"
+    - "source_path"
+    - "processed_path"
+    - "caption"
+    - "tags"
+    - "model_backend"
+    - "model_name"
+    - "pipeline_version"
+    - "run_id"
+    - "timestamp"
+    - "image_hash"
+    - "width"
+    - "height"
+    - "file_size_bytes"
+    - "processing_duration_ms"
+
+  output_formats:
+    - "parquet"                       # primary — queryable via Spark
+    - "json"                          # human-readable sidecar
+
+# ── Storage Paths ────────────────────────────────────────────
+paths:
+  raw_images:       "/opt/airflow/data/raw"
+  processed_images: "/opt/airflow/data/processed"
+  versioned_output: "/opt/airflow/data/versioned"
+  model_cache:      "/opt/airflow/model_cache"
+  temp:             "/tmp/image_pipeline"
+
+# ── Airflow DAG Settings ─────────────────────────────────────
+airflow:
+  dag_id: "image_caption_tag_pipeline"
+  schedule_interval: "@hourly"        # cron or preset
+  max_active_runs: 1
+  catchup: false
+  retries: 2
+  retry_delay_minutes: 5
+  task_timeout_minutes: 60
+  tags:
+    - "image-processing"
+    - "ml-inference"
+    - "data-versioning"
